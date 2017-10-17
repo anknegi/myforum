@@ -1,0 +1,10 @@
+name = Rubico Forum
+description = Rubico Local Forum
+package = Other
+version = VERSION
+core = 7.x
+
+dependencies[] = entity
+dependencies[] = views
+
+files[] = rubico_topic.controller.inc

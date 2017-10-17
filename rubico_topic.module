@@ -1,0 +1,360 @@
+
+<?php 
+
+/**
+ * Implements hook_entity_info().
+ */
+function rubico_topic_entity_info() {
+  $return = array(
+    'rubico_topic' => array(
+      'label' => t('Topic'),
+      'entity class' => 'RubicoTopic',
+      'controller class' => 'RubicoTopicController',
+      'base table' => 'rubico_topic',
+      'fieldable' => TRUE,
+      'entity keys' => array(
+        'id' => 'tkid',
+        'bundle' => 'type',
+      ),
+      'bundle keys' => array(
+        'bundle' => 'type',
+      ),
+      'bundles' => array(),
+      'load hook' => 'rubico_topic_load',
+      'view modes' => array(
+        'full' => array(
+          'label' => t('Default'),
+          'custom settings' => FALSE,
+        ),
+      ),
+      'label callback' => 'entity_class_label',
+      'uri callback' => 'entity_class_uri',
+      'module' => 'rubico_topic',
+     'access callback' => 'rubico_topic_access',
+    ),
+  );
+  $return['rubico_topic_type'] = array(
+    'label' => t('Topic Type'),
+    'entity class' => 'RubicoTopicType',
+    'controller class' => 'RubicoTopicTypeController',
+    'base table' => 'rubico_topic_type',
+    'fieldable' => FALSE,
+    'bundle of' => 'rubico_topic',
+    'exportable' => TRUE,
+    'entity keys' => array(
+      'id' => 'id',
+      'name' => 'type',
+      'label' => 'label',
+    ),
+    'module' => 'rubico_topic',
+    // Enable the entity API's admin UI.
+    'admin ui' => array(
+      'path' => 'admin/structure/topic-types',
+      'file' => 'rubico_topic.admin.inc',
+      'controller class' => 'RubicoTopicTypeUIController',
+    ),
+     'access callback' => 'rubico_topic_access',
+  );
+
+  return $return;
+}
+
+
+
+/**
+ * Implements hook_entity_info_alter().
+ */
+function rubico_topic_entity_info_alter(&$entity_info) {
+  foreach (rubico_topic_types() as $type => $info) {
+    $entity_info['rubico_topic']['bundles'][$type] = array(
+      'label' => $info->label,
+      'admin' => array(
+        'path' => 'admin/structure/topic-types/manage/%rubico_topic_type',
+        'real path' => 'admin/structure/topic-types/manage/' . $type,
+        'bundle argument' => 4,
+      ),
+    );
+  }
+}
+
+
+/**
+ * Implements hook_menu().
+ */
+function rubico_topic_menu() {
+  $items = array();
+
+  $items['topic/add'] = array(
+    'title' => 'Add topic',
+    'page callback' => 'rubico_topic_admin_add_page',
+    'access arguments' => array('administer rubico_topic entities'),
+    'file' => 'rubico_topic.admin.inc',
+    'type' => MENU_LOCAL_ACTION,
+    'tab_parent' => 'topic',
+    'tab_root' => 'topic',
+  );
+
+  $topic_uri = 'topic/%rubico_topic';
+  $topic_uri_argument_position = 1;
+
+  $items[$topic_uri] = array(
+    'title callback' => 'entity_label',
+    'title arguments' => array('rubico_topic', $topic_uri_argument_position),
+    'page callback' => 'rubico_topic_view',
+    'page arguments' => array($topic_uri_argument_position),
+    'access callback' => 'entity_access',
+    'access arguments' => array('view', 'rubico_topic', $topic_uri_argument_position),
+    'file' => 'rubico_topic.pages.inc',
+  );
+
+  $items[$topic_uri . '/view'] = array(
+    'title' => 'View',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
+  );
+
+  $items[$topic_uri . '/delete'] = array(
+    'title' => 'Delete topic',
+    'title callback' => 'rubico_topic_label',
+    'title arguments' => array($topic_uri_argument_position),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('rubico_topic_delete_form', $topic_uri_argument_position),
+    'access callback' => 'entity_access',
+    'access arguments' => array('edit', 'rubico_topic', $topic_uri_argument_position),
+    'file' => 'rubico_topic.admin.inc',
+  );
+
+  $items[$topic_uri . '/edit'] = array(
+    'title' => 'Edit',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('rubico_topic_form', $topic_uri_argument_position),
+    'access callback' => 'entity_access',
+    'access arguments' => array('edit', 'rubico_topic', $topic_uri_argument_position),
+    'file' => 'rubico_topic.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
+  );
+
+  foreach (rubico_topic_types() as $type => $info) {
+    $items['topic/add/' . $type] = array(
+      'title' => 'Add topic',
+      'page callback' => 'rubico_topic_add',
+      'page arguments' => array(2),
+      'access callback' => 'entity_access',
+      'access arguments' => array('create', 'rubico_topic', $type),
+      'file' => 'rubico_topic.admin.inc',
+    );
+  }
+
+  $items['admin/structure/topic-types/%rubico_topic_type/delete'] = array(
+    'title' => 'Delete',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('rubico_topic_type_form_delete_confirm', 4),
+    'access arguments' => array('administer rubico_topic types'),
+    'weight' => 1,
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'rubico_topic.admin.inc',
+  );
+
+  return $items;
+}
+
+
+
+/**
+ * Implements hook_permission().
+ */
+
+function rubico_topic_permission() {
+  $permissions = array(
+    'administer rubico_topic types' => array(
+      'title' => t('Administer topic types'),
+      'description' => t('Allows users to configure topic types and their fields.'),
+      'restrict access' => TRUE,
+    ),
+    'create rubico_topic entities' => array(
+      'title' => t('Create topics'),
+      'description' => t('Allows users to create topcs.'),
+      'restrict access' => TRUE,
+    ),
+    'view rubico_topic entities' => array(
+      'title' => t('View topics'),
+      'description' => t('Allows users to view topics.'),
+      'restrict access' => TRUE,
+    ),
+    'edit any rubico_topic entities' => array(
+      'title' => t('Edit any topics'),
+      'description' => t('Allows users to edit any topics.'),
+      'restrict access' => TRUE,
+    ),
+    'edit own rubico_topic entities' => array(
+      'title' => t('Edit own topics'),
+      'description' => t('Allows users to edit own topics.'),
+      'restrict access' => TRUE,
+    ),
+  );
+
+  return $permissions;
+}
+
+
+
+
+/**
+ * Implements hook_entity_property_info_alter().
+ */
+function rubico_topic_entity_property_info_alter(&$info) {
+  $properties = &$info['rubico_topic']['properties'];
+  $properties['created'] = array(
+    'label' => t("Date created"),
+    'type' => 'date',
+    'description' => t("The date the node was posted."),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer nodes',
+    'schema field' => 'created',
+  );
+  $properties['changed'] = array(
+    'label' => t("Date changed"),
+    'type' => 'date',
+    'schema field' => 'changed',
+    'description' => t("The date the node was most recently updated."),
+  );
+  $properties['uid'] = array(
+    'label' => t("Author"),
+    'type' => 'user',
+    'description' => t("The author of the topic."),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer rubico_topic entities',
+    'required' => TRUE,
+    'schema field' => 'uid',
+  );
+}
+
+
+/*******************************************************************************
+ ********************************* Topic API's **********************************
+ ******************************************************************************/
+
+/**
+ * Access callback for topic.
+ */
+/*
+function rubico_topic_access($op, $topic, $account = NULL, $entity_type = NULL) {
+  global $user;
+
+  if (!isset($account)) {
+    $account = $user;
+  }
+  switch ($op) {
+    case 'create':
+      return user_access('administer rubico_topic entities', $account)
+          || user_access('create rubico_topic entities', $account);
+    case 'view':
+      return user_access('administer rubico_topic entities', $account)
+          || user_access('view rubico_topic entities', $account);
+    case 'edit':
+      return user_access('administer rubico_topic entities')
+          || user_access('edit any rubico_topic entities')
+          || (user_access('edit own rubico_topic entities') && ($topic->uid == $account->uid));
+  }
+}
+
+
+/**
+ * Load a topic.
+ */
+function rubico_topic_load($tkid, $reset = FALSE) {
+  $topics = rubico_topic_load_multiple(array($tkid), array(), $reset);
+  return reset($topics);
+}
+
+/**
+ * Load multiple topic based on certain conditions.
+ */
+function rubico_topic_load_multiple($tkids = array(), $conditions = array(), $reset = FALSE) {
+  return entity_load('rubico_topic', $tkids, $conditions, $reset);
+}
+
+/**
+ * Save topic.
+ */
+function rubico_topic_save($topic) {
+  entity_save('rubico_topic', $topic);
+}
+
+/**
+ * Delete single topic.
+ */
+function rubico_topic_delete($topic) {
+  entity_delete('rubico_topic', entity_id('rubico_topic' ,$topic));
+}
+
+/**
+ * Delete multiple topic.
+ */
+function rubico_topic_delete_multiple($topic_ids) {
+  entity_delete_multiple('rubico_topic', $topic_ids);
+}
+
+
+/*******************************************************************************
+ ****************************** Topic Type API's ********************************
+ ******************************************************************************/
+
+/**
+ * Access callback for topic Type.
+ */
+function rubico_topic_access($op, $entity = NULL) {
+  return user_access('administer rubico_topic types');
+}
+
+/**
+ * Load topic Type.
+ */
+function rubico_topic_type_load($topic_type) {
+  return rubico_topic_types($topic_type);
+}
+
+/**
+ * List of topic Type.
+ */
+function rubico_topic_types($type_name = NULL) {
+  $types = entity_load_multiple_by_name('rubico_topic_type', isset($type_name) ? array($type_name) : FALSE);
+  return isset($type_name) ? reset($types) : $types;
+}
+
+/**
+ * Save topic Type entity.
+ */
+function rubico_topic_type_save($topic_type) {
+  entity_save('rubico_topic_type', $topic_type);
+}
+
+/**
+ * Delete single case type.
+ */
+function rubico_topic_type_delete($topic_type) {
+  entity_delete('rubico_topic_type', entity_id('rubico_topic_type' ,$topic_type));
+}
+
+/**
+ * Delete multiple case types.
+ */
+function rubico_topic_type_delete_multiple($topic_type_ids) {
+  entity_delete_multiple('rubico_topic_type', $topic_type_ids);
+}
+
+/**
+  * Implements hook_views_api().
+  */
+function rubico_topic_views_api() {
+  return array(
+    'api' => 3,
+    'path' => drupal_get_path('module', 'rubico_topic'),
+  );
+}
+
+
+
+
+?>
